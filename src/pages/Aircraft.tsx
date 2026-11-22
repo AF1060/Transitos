@@ -90,6 +90,7 @@ function RadarView({ predictions }: { predictions: PlanePrediction[] }) {
   const xy = (dist: number, brg: number) => [(dist / RADAR_KM) * Math.sin((brg * Math.PI) / 180) * 100, -(dist / RADAR_KM) * Math.cos((brg * Math.PI) / 180) * 100];
   const [bx, by] = xy(RADAR_KM, body.az);
   return (
+    <div>
     <svg viewBox="-110 -110 220 220" className="mx-auto aspect-square max-h-[520px] w-full">
       {[20,40,60,80].map((r) => <circle key={r} r={(r/RADAR_KM)*100} fill="none" stroke="hsl(var(--border))" strokeWidth={0.4} />)}
       {[20,40,60,80].map((r) => <text key={r} x={1.5} y={-(r/RADAR_KM)*100+4} fontSize={3.5} fill="hsl(var(--muted-foreground))">{r} km</text>)}
@@ -101,6 +102,16 @@ function RadarView({ predictions }: { predictions: PlanePrediction[] }) {
       <circle r={(settings.maxTravelKm/RADAR_KM)*100} fill="hsl(var(--primary))" fillOpacity={0.05} stroke="hsl(var(--primary))" strokeOpacity={0.4} strokeWidth={0.4} strokeDasharray="1.5 1.5" />
       {planes.map((p) => { const {dist,brg} = planePolar(p,home); if(dist>RADAR_KM) return null; const [x,y] = xy(dist,brg); const h=(p.track*Math.PI)/180; const isHere=hotHere.has(p.icao24); const isElsewhere=hotElsewhere.has(p.icao24); const color=isHere?'hsl(var(--primary))':isElsewhere?'hsl(var(--chart-4))':'hsl(var(--muted-foreground))'; return (<g key={p.icao24}><line x1={x} y1={y} x2={x+Math.sin(h)*6} y2={y-Math.cos(h)*6} stroke={color} strokeWidth={0.6} /><circle cx={x} cy={y} r={isHere||isElsewhere?2:1.2} fill={isHere||isElsewhere?color:'hsl(var(--foreground))'} />{(isHere||isElsewhere)&&<text x={x+2.5} y={y-2} fontSize={3.5} fill={color}>{p.callsign}</text>}</g>); })}
     </svg>
+    <ul className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+      <li className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full bg-primary" />Vai cruzar o {target} a partir daqui</li>
+      <li className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: 'hsl(var(--chart-4))' }} />Vai cruzar o {target} noutro local (deslocar-se)</li>
+      <li className="flex items-center gap-1.5"><span className="inline-block h-1.5 w-1.5 rounded-full bg-foreground" />Outro avião</li>
+      <li className="flex items-center gap-1.5"><span className="inline-block h-0.5 w-3 bg-muted-foreground" />Rumo do avião</li>
+      <li className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full border border-dashed border-primary/60" />Distância máx. de deslocação ({settings.maxTravelKm} km)</li>
+      <li className="flex items-center gap-1.5"><span className="inline-block h-0 w-3 border-t border-dashed border-primary" />Direção do {target}</li>
+      <li className="flex items-center gap-1.5"><span className="font-semibold text-foreground">+</span>A sua posição</li>
+    </ul>
+    </div>
   );
 }
 
