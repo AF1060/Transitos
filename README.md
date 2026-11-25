@@ -69,3 +69,43 @@ UI (`src/components/ui/*`, só os que a app usa, copiados do pacote partilhado d
 - **Data de fim da recolha mantida (1 Dez 2026)**: tal como na Zite, `collectSightings.ts` para
   sozinho nessa data. Remove o bloco `if (Date.now() > END_AT)` em
   `netlify/functions/collectSightings.ts` se quiseres que continue.
+
+## Altitude do observador (novo)
+
+Nas **Definições → Localização** há um campo "Altitude do ponto de observação" (metros acima do nível
+do mar; soma o terreno ao andar/miradouro) e um botão **GPS** que preenche o valor se o telemóvel o
+fornecer (precisão típica ±20–50 m). Predefinição 0 = comportamento anterior.
+
+**Porque importa.** Um trânsito só se vê ao longo da linha que une o Sol, o avião e o observador. Essa
+linha, prolongada para trás do avião, toca o chão num ponto que depende da altura a que o observador
+está. Se o avião voa a altitude `H` e o Sol tem elevação `ε`, o ponto no solo de um observador à
+altitude `h` fica deslocado, face ao do nível do mar, de aproximadamente
+
+    Δ ≈ h / tan(ε)        (ex.: h = 1000 m, ε = 30° → Δ ≈ 1,7 km)
+
+e a faixa útil do trânsito tem só centenas de metros de largura — ignorar a altitude faz falhar o local.
+
+**O que foi alterado (todas as fórmulas passam a usar `home.alt`):**
+- `geo.ts`: `LatLon.alt` (m); `obsEcef()` — posição ECEF do observador **com** altitude; `rayEarth(o, d, hKm)`
+  — interseção com a superfície à altitude `h` (elipsoide de semieixos `A+h`, `B+h`) em vez do nível do mar.
+- `aircraft.ts`: vetor observador→avião usa `obsEcef(home)` (altura relativa `H − h`, ângulo de elevação,
+  distância oblíqua); locais alternativos (`centerSites`) e faixa de passagem (`offsetBand`) usam o chão à altitude `h`.
+- `iss.ts` / `offset.ts`: idem para a ISS (ponto no solo, faixa, análise no local e em casa).
+- `routeStats.ts` e `_collector.ts`: distância horizontal do avião ao ponto de alinhamento
+  `d = (H − h) / tan(ε)` (antes `H / tan(ε)`); aviões abaixo do observador são ignorados.
+- `astro.ts`: `bodyTopo` e `riseSet` recebem a altitude (no nascer/pôr só afeta a atmosfera/refração).
+- Base de dados: migração `0002_observer_altitude.sql` (coluna `observer_altitude_m`).
+
+**Verificação numérica** (script de teste, Sol a 30°, avião a 10 000 m): com `alt = 0` os resultados são
+idênticos aos anteriores; o deslocamento no solo para h = 100/500/1000/2000 m foi 0,175/0,877/1,754/3,507 km
+vs. 0,173/0,865/1,730/3,460 km pela fórmula plana (diferença ≈1,4 %, curvatura da Terra); um observador à
+altitude `h` no local calculado vê o avião exatamente no centro do disco (0,0000°), enquanto o mesmo local
+calculado ignorando a altitude erraria o disco por 2,7°.
+
+**Limitações assumidas:**
+- Os locais alternativos sugeridos assumem **a mesma altitude** do teu ponto; o terreno real noutro sítio pode ser
+  diferente (um valor por local exigiria uma API de elevação por ponto).
+- A altitude introduzida é tratada como acima do elipsoide ≈ nível do mar; a ondulação do geoide em Portugal
+  (~50 m) é ignorada (≈ 0,09 km de erro no solo a 30° de elevação).
+- A depressão do horizonte (horizonte visível abaixo da horizontal) **não** é aplicada aos trânsitos: depende da
+  altura acima do terreno envolvente, que não é conhecida, e não altera a geometria do alinhamento.
