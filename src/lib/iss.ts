@@ -1,6 +1,6 @@
 import * as satellite from 'satellite.js';
 import { bodyEcefKm, bodyTopo, Target } from './astro';
-import { DEG, Vec, LatLon, sub, norm, dot, rayEarth, segDist, geodeticToEcef, ecefToGeodetic, enuVec, skyOffset, len, haversineKm, bearingDeg } from './geo';
+import { DEG, Vec, LatLon, sub, norm, dot, rayEarth, segDist, geodeticToEcef, obsEcef, ecefToGeodetic, enuVec, skyOffset, len, haversineKm, bearingDeg } from './geo';
 import { offsetBand, OffsetBand } from './offset';
 export type SatRec = satellite.SatRec;
 export const makeSat = (l1: string, l2: string) => satellite.twoline2satrec(l1, l2);
@@ -21,7 +21,7 @@ function sampleAt(sat: SatRec, target: Target, obs: LatLon, oe: Vec, t: number) 
   return { ...skyOffset(vb, vi), range: len(vi) };
 }
 export function analyzeAt(sat: SatRec, target: Target, obs: LatLon, center: number, halfS = 20, stepS = 0.01): Analysis {
-  const oe = geodeticToEcef(obs.lat, obs.lon, 0);
+  const oe = obsEcef(obs);
   const body = bodyTopo(target, new Date(center), obs);
   const r = body.radiusDeg;
   let minSep = Infinity, tMin = center, entry: number | null = null, exit: number | null = null, range = 0;
@@ -34,19 +34,19 @@ export function analyzeAt(sat: SatRec, target: Target, obs: LatLon, center: numb
   return { minSep, tMin, entry, exit, duration: entry !== null && exit !== null ? (exit - entry) / 1000 + stepS : 0, issRangeKm: range, bodyEl: body.el, bodyAz: body.az, radiusDeg: r };
 }
 export function skyTrack(sat: SatRec, target: Target, obs: LatLon, center: number, maxDeg: number): SkyPoint[] {
-  const oe = geodeticToEcef(obs.lat, obs.lon, 0);
+  const oe = obsEcef(obs);
   const pts: SkyPoint[] = [];
   for (let t = center - 30_000; t <= center + 30_000; t += 20) { const s = sampleAt(sat, target, obs, oe, t); if (s && Math.abs(s.x) <= maxDeg && Math.abs(s.y) <= maxDeg) pts.push({ t, x: s.x, y: s.y }); }
   return pts;
 }
-function centerGround(sat: SatRec, target: Target, date: Date): Vec | null { const iss = issEcef(sat, date); if (!iss) return null; return rayEarth(iss, norm(sub(iss, bodyEcefKm(target, date)))); }
+function centerGround(sat: SatRec, target: Target, date: Date, hKm = 0): Vec | null { const iss = issEcef(sat, date); if (!iss) return null; return rayEarth(iss, norm(sub(iss, bodyEcefKm(target, date))), hKm); }
 export interface IssTransit { id: string; target: Target; center: number; site: LatLon; siteDistKm: number; siteBearing: number; atSite: Analysis; atHome: Analysis; siteOffset: 'centro' | 'abaixo' | 'acima'; band: OffsetBand | null; }
 export interface SearchOptions { home: LatLon; maxTravelKm: number; minElevDeg: number; offsetFrac?: number; days: number; onProgress?: (p: number) => void; }
 const tick = () => new Promise((r) => setTimeout(r, 0));
 export interface NearestMiss { distKm: number; at: number; lat: number; lon: number; bearing: number; }
 export interface SearchResult { transits: IssTransit[]; nearest: NearestMiss | null; }
 export async function searchTransits(sat: SatRec, target: Target, o: SearchOptions): Promise<SearchResult> {
-  const home = o.home; const he = geodeticToEcef(home.lat, home.lon, 0); const up = norm(he);
+  const home = o.home; const he = obsEcef(home); const up = norm(he); const hKm = (home.alt ?? 0) / 1000;
   const start = Date.now(); const end = start + o.days * 86400_000; const step = 5000;
   const minSin = Math.sin((o.minElevDeg - 3) * DEG); const out: IssTransit[] = []; let nearest: NearestMiss | null = null;
   let prevG: Vec | null = null; let prevT = 0; let i = 0;
@@ -54,7 +54,7 @@ export async function searchTransits(sat: SatRec, target: Target, o: SearchOptio
     if (++i % 4000 === 0) { o.onProgress?.((t - start) / (end - start)); await tick(); }
     const date = new Date(t); const b = bodyEcefKm(target, date);
     if (dot(norm(sub(b, he)), up) < minSin) { prevG = null; continue; }
-    const G = centerGround(sat, target, date);
+    const G = centerGround(sat, target, date, hKm);
     if (!G) { prevG = null; continue; }
     const g = ecefToGeodetic(G); const d = haversineKm(home, g);
     if (!nearest || d < nearest.distKm) nearest = { distKm: d, at: t, lat: g.lat, lon: g.lon, bearing: bearingDeg(home, g) };
@@ -68,19 +68,20 @@ export async function searchTransits(sat: SatRec, target: Target, o: SearchOptio
   return { transits: out, nearest };
 }
 function refine(sat: SatRec, target: Target, o: SearchOptions, he: Vec, t0: number, t1: number): IssTransit | null {
+  const hKm = (o.home.alt ?? 0) / 1000;
   let best = Infinity, bestT = t0;
-  const scan = (a: number, b: number, s: number) => { for (let t = a; t <= b; t += s) { const G = centerGround(sat, target, new Date(t)); if (!G) continue; const d = len(sub(G, he)); if (d < best) { best = d; bestT = t; } } };
+  const scan = (a: number, b: number, s: number) => { for (let t = a; t <= b; t += s) { const G = centerGround(sat, target, new Date(t), hKm); if (!G) continue; const d = len(sub(G, he)); if (d < best) { best = d; bestT = t; } } };
   scan(t0, t1, 50); scan(bestT - 60, bestT + 60, 2);
-  const G = centerGround(sat, target, new Date(bestT)); if (!G) return null;
+  const G = centerGround(sat, target, new Date(bestT), hKm); if (!G) return null;
   const g = ecefToGeodetic(G); const centre = { lat: g.lat, lon: g.lon };
   const date = new Date(bestT); const i0 = issEcef(sat, date), i1 = issEcef(sat, new Date(bestT + 1000));
-  const band = i0 && i1 ? offsetBand(i0, sub(i1, i0), bodyEcefKm(target, date), bodyTopo(target, date, centre).radiusDeg, norm(geodeticToEcef(centre.lat, centre.lon, 0)), o.offsetFrac) : null;
-  let site: LatLon = centre; let siteOffset: IssTransit['siteOffset'] = 'centro'; let dist = haversineKm(o.home, centre);
+  const band = i0 && i1 ? offsetBand(i0, sub(i1, i0), bodyEcefKm(target, date), bodyTopo(target, date, centre).radiusDeg, norm(geodeticToEcef(centre.lat, centre.lon, 0)), o.offsetFrac, hKm) : null;
+  let site: LatLon = { ...centre, alt: o.home.alt }; let siteOffset: IssTransit['siteOffset'] = 'centro'; let dist = haversineKm(o.home, centre);
   if (dist > o.maxTravelKm) {
     if (!band) return null;
     const edges = ([['abaixo', band.below], ['acima', band.above]] as const).map(([k, pt]) => ({ k, pt, d: haversineKm(o.home, pt) })).sort((a, b) => a.d - b.d);
     if (edges[0].d > o.maxTravelKm) return null;
-    site = edges[0].pt; siteOffset = edges[0].k; dist = edges[0].d;
+    site = { ...edges[0].pt, alt: o.home.alt }; siteOffset = edges[0].k; dist = edges[0].d;
   }
   if (bodyTopo(target, date, site).el < o.minElevDeg) return null;
   const atSite = analyzeAt(sat, target, site, bestT, 8, 0.005);

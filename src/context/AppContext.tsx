@@ -10,6 +10,8 @@ export interface Settings {
   useGps: boolean;
   latitude: number;
   longitude: number;
+  /** Altitude do ponto de observação acima do nível do mar, em metros (colina, prédio, etc.). */
+  observerAltitudeM: number;
   defaultTarget: Target;
   marginDegrees: number;
   maxTravelKm: number;
@@ -25,7 +27,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  useGps: true, latitude: 38.7223, longitude: -9.1393, defaultTarget: 'Sol', marginDegrees: 2,
+  useGps: true, latitude: 38.7223, longitude: -9.1393, observerAltitudeM: 0, defaultTarget: 'Sol', marginDegrees: 2,
   maxTravelKm: 30, minElevationDegrees: 10, focalLengthMm: 600, sensor: 'Micro 4/3',
   issAlertMinutes: 15, aircraftAlertSeconds: 60, voiceAlerts: true,
   aircraftOffsetPercent: 80, issOffsetPercent: 67,
@@ -49,7 +51,7 @@ interface Ctx {
   update: (p: Partial<Settings>) => void;
   target: Target;
   setTarget: (t: Target) => void;
-  home: { lat: number; lon: number };
+  home: { lat: number; lon: number; alt: number };
   gpsStatus: 'off' | 'pending' | 'ok' | 'error';
   locate: () => void;
   weather: Weather | null;
@@ -110,6 +112,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ...DEFAULT_SETTINGS, ...s,
             latitude: s.latitude ?? DEFAULT_SETTINGS.latitude,
             longitude: s.longitude ?? DEFAULT_SETTINGS.longitude,
+            observerAltitudeM: s.observerAltitudeM ?? 0,
             defaultTarget: s.defaultTarget === 'Lua' ? 'Lua' : 'Sol',
           };
           setSettings(merged);
@@ -140,7 +143,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (loaded && settings.useGps) locate();
   }, [loaded, settings.useGps, locate]);
 
-  const home = useMemo(() => ({ lat: settings.latitude, lon: settings.longitude }), [settings.latitude, settings.longitude]);
+  const home = useMemo(() => ({ lat: settings.latitude, lon: settings.longitude, alt: settings.observerAltitudeM ?? 0 }), [settings.latitude, settings.longitude, settings.observerAltitudeM]);
 
   useEffect(() => {
     if (!loaded) return;

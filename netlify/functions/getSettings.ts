@@ -10,6 +10,7 @@ export default async (_req: Request, _context: Context) => {
       useGps: r.use_gps ?? true,
       latitude: r.latitude ?? null,
       longitude: r.longitude ?? null,
+      observerAltitudeM: r.observer_altitude_m ?? 0,
       defaultTarget: r.default_target ?? 'Sol',
       marginDegrees: r.margin_degrees ?? 2,
       maxTravelKm: r.max_travel_km ?? 30,

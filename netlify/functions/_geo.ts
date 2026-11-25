@@ -8,6 +8,8 @@ export type Vec = [number, number, number];
 export interface LatLon {
   lat: number;
   lon: number;
+  /** Altitude do ponto de observação acima do nível do mar, em METROS (omitido = 0). */
+  alt?: number;
 }
 
 export const sub = (a: Vec, b: Vec): Vec => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -29,6 +31,9 @@ export function geodeticToEcef(lat: number, lon: number, hKm = 0): Vec {
   const N = A / Math.sqrt(1 - E2 * Math.sin(p) ** 2);
   return [(N + hKm) * Math.cos(p) * Math.cos(l), (N + hKm) * Math.cos(p) * Math.sin(l), (N * (1 - E2) + hKm) * Math.sin(p)];
 }
+
+/** Posição ECEF (km) do observador, já com a sua altitude. */
+export const obsEcef = (o: LatLon): Vec => geodeticToEcef(o.lat, o.lon, (o.alt ?? 0) / 1000);
 
 export function ecefToGeodetic(v: Vec): LatLon & { h: number } {
   const [x, y, z] = v;
@@ -76,13 +81,19 @@ export function skyOffset(bodyEnu: Vec, objEnu: Vec) {
   return { x, y, sep };
 }
 
-export function rayEarth(o: Vec, d: Vec): Vec | null {
-  const k = A / B;
+/**
+ * Interseção do raio (origem `o`, direção `d`) com a superfície terrestre à altitude `hKm` (km).
+ * A superfície à altitude h é aproximada pelo elipsoide com semieixos (A+h, B+h) — erro desprezável
+ * para h de alguns km. Com hKm = 0 é o elipsoide ao nível do mar (comportamento anterior).
+ */
+export function rayEarth(o: Vec, d: Vec, hKm = 0): Vec | null {
+  const Ah = A + hKm, Bh = B + hKm;
+  const k = Ah / Bh;
   const ox = o[0], oy = o[1], oz = o[2] * k;
   const dx = d[0], dy = d[1], dz = d[2] * k;
   const a = dx * dx + dy * dy + dz * dz;
   const b = 2 * (ox * dx + oy * dy + oz * dz);
-  const c = ox * ox + oy * oy + oz * oz - A * A;
+  const c = ox * ox + oy * oy + oz * oz - Ah * Ah;
   const disc = b * b - 4 * a * c;
   if (disc < 0) return null;
   const s = (-b - Math.sqrt(disc)) / (2 * a);

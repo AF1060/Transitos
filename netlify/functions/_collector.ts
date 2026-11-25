@@ -15,7 +15,9 @@ function lisbonParts(d: Date) {
 function relevant(p: RawPlane, home: LatLon, up: { body: Target; az: number; el: number }[]) {
   for (const b of up) {
     const back = (b.az + 180) % 360;
-    const d = p.altM / 1000 / Math.tan(b.el * DEG);
+    const hAbove = p.altM - (home.alt ?? 0); // altura do avião ACIMA do observador
+    if (hAbove <= 0) continue;
+    const d = hAbove / 1000 / Math.tan(b.el * DEG);
     if (d > 300) continue;
     for (let s = -150; s <= 150; s += 15) {
       const pt = destination(p, p.track, (p.velocity * s) / 1000);
@@ -31,13 +33,13 @@ function relevant(p: RawPlane, home: LatLon, up: { body: Target; az: number; el:
  * recolher.
  */
 export async function collectOnce(dryRun = false) {
-  const rows = await db.sql`SELECT latitude, longitude, min_elevation_degrees FROM observer_settings WHERE id = 1`;
-  const s = rows[0] as { latitude: number | null; longitude: number | null; min_elevation_degrees: number } | undefined;
+  const rows = await db.sql`SELECT latitude, longitude, observer_altitude_m, min_elevation_degrees FROM observer_settings WHERE id = 1`;
+  const s = rows[0] as { latitude: number | null; longitude: number | null; observer_altitude_m: number | null; min_elevation_degrees: number } | undefined;
   const out: { seen: number; saved: number; source?: string; skipped?: string }[] = [];
   if (!s) { out.push({ seen: 0, saved: 0, skipped: 'Definições do observador ainda não guardadas' }); return out; }
 
   const now = new Date();
-  const home = { lat: s.latitude ?? 38.7223, lon: s.longitude ?? -9.1393 };
+  const home = { lat: s.latitude ?? 38.7223, lon: s.longitude ?? -9.1393, alt: s.observer_altitude_m ?? 0 };
   const minEl = s.min_elevation_degrees ?? 10;
   const up = (['Sol', 'Lua'] as const)
     .map((body) => ({ body, ...bodyTopo(body, now, home) }))

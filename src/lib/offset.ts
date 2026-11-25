@@ -4,7 +4,7 @@ export interface OffsetBand {
   frac: number; centre: LatLon; below: LatLon; above: LatLon;
   halfWidthM: number; belowBrg: number; discCentreS: number; discEdgeS: number;
 }
-export function offsetBand(pe: Vec, vel: Vec, be: Vec, radiusDeg: number, up: Vec, frac = OFFSET_FRAC): OffsetBand | null {
+export function offsetBand(pe: Vec, vel: Vec, be: Vec, radiusDeg: number, up: Vec, frac = OFFSET_FRAC, hKm = 0): OffsetBand | null {
   const u = norm(sub(be, pe));
   const vp: Vec = [vel[0] - dot(vel, u) * u[0], vel[1] - dot(vel, u) * u[1], vel[2] - dot(vel, u) * u[2]];
   const speed = len(vp);
@@ -16,10 +16,10 @@ export function offsetBand(pe: Vec, vel: Vec, be: Vec, radiusDeg: number, up: Ve
   const [c, s] = [Math.cos(d), Math.sin(d)];
   const ground = (sign: number): LatLon | null => {
     const w: Vec = norm([u[0] * c + sign * n[0] * s, u[1] * c + sign * n[1] * s, u[2] * c + sign * n[2] * s]);
-    const g = rayEarth(pe, [-w[0], -w[1], -w[2]]);
+    const g = rayEarth(pe, [-w[0], -w[1], -w[2]], hKm);
     return g ? ecefToGeodetic(g) : null;
   };
-  const gc = rayEarth(pe, [-u[0], -u[1], -u[2]]);
+  const gc = rayEarth(pe, [-u[0], -u[1], -u[2]], hKm);
   const below = ground(1), above = ground(-1);
   if (!gc || !below || !above) return null;
   const centre = ecefToGeodetic(gc);

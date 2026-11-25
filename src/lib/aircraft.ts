@@ -1,5 +1,5 @@
 import { bodyTopo, bodyEcefKm, Target } from './astro';
-import { LatLon, destination, geodeticToEcef, ecefToGeodetic, enuVec, skyOffset, len, haversineKm, bearingDeg, rayEarth, norm, sub } from './geo';
+import { LatLon, destination, geodeticToEcef, obsEcef, ecefToGeodetic, enuVec, skyOffset, len, haversineKm, bearingDeg, rayEarth, norm, sub } from './geo';
 import type { SkyPoint } from './iss';
 import { offsetBand, OffsetBand, OFFSET_FRAC } from './offset';
 
@@ -20,7 +20,7 @@ export function centerSites(p: Plane, home: LatLon, target: Target, now: number,
     const pos = planeAt(p, t);
     if (pos.altKm < 0.05) continue;
     const pe = geodeticToEcef(pos.lat, pos.lon, pos.altKm);
-    const G = rayEarth(pe, norm(sub(pe, bodyEcefKm(target, new Date(t)))));
+    const G = rayEarth(pe, norm(sub(pe, bodyEcefKm(target, new Date(t)))), (home.alt ?? 0) / 1000); // chão à altitude do observador
     if (!G) continue;
     const g = ecefToGeodetic(G);
     const d = haversineKm(home, g);
@@ -42,7 +42,7 @@ function withBand(p: Plane, home: LatLon, target: Target, sites: AltSite[], frac
     const p0 = planeAt(p, a.t), p1 = planeAt(p, a.t + 1000);
     const e0 = geodeticToEcef(p0.lat, p0.lon, p0.altKm), e1 = geodeticToEcef(p1.lat, p1.lon, p1.altKm);
     const date = new Date(a.t);
-    const band = offsetBand(e0, sub(e1, e0), bodyEcefKm(target, date), bodyTopo(target, date, home).radiusDeg, up, frac);
+    const band = offsetBand(e0, sub(e1, e0), bodyEcefKm(target, date), bodyTopo(target, date, home).radiusDeg, up, frac, (home.alt ?? 0) / 1000);
     return { ...a, band };
   });
 }
@@ -52,7 +52,7 @@ export function planeAt(p: Plane, t: number): LatLon & { altKm: number } {
   return { ...pos, altKm: Math.max(0, p.altM + p.vrate * dt) / 1000 };
 }
 export function planeOffset(p: Plane, t: number, home: LatLon, target: Target) {
-  const oe = geodeticToEcef(home.lat, home.lon, 0);
+  const oe = obsEcef(home); // observador à sua altitude (home.alt, m)
   const pos = planeAt(p, t);
   const v = enuVec(home, oe, geodeticToEcef(pos.lat, pos.lon, pos.altKm));
   const body = bodyTopo(target, new Date(t), home);

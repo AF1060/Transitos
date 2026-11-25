@@ -1,6 +1,6 @@
 import * as Astronomy from 'astronomy-engine';
 import * as satellite from 'satellite.js';
-import { DEG, Vec, LatLon, geodeticToEcef, enuVec, azElFromEnu } from './_geo';
+import { DEG, Vec, LatLon, obsEcef, enuVec, azElFromEnu } from './_geo';
 
 export type Target = 'Sol' | 'Lua';
 const AU_KM = 149597870.7;
@@ -46,7 +46,7 @@ export interface BodyState {
 }
 
 export function bodyTopo(target: Target, date: Date, obs: LatLon): BodyState {
-  const oe = geodeticToEcef(obs.lat, obs.lon, 0);
+  const oe = obsEcef(obs); // inclui a altitude do observador (obs.alt, em metros)
   const enu = enuVec(obs, oe, bodyEcefKm(target, date));
   const { az, el, range } = azElFromEnu(enu);
   const r = Math.asin(RADIUS_KM[target] / range) / DEG;

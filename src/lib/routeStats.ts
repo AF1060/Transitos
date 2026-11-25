@@ -42,7 +42,9 @@ export function analyse(rows: SRow[], date: Date, home: LatLon, body: Target, mi
       if (!b) { b = bodyTopo(body, new Date(start + kT * 3 * 60_000), home); topo.set(kT, b); }
       if (b.el < minEl) continue;
       const back = (b.az + 180) % 360;
-      const d = r.altitudeM / 1000 / Math.tan(b.el * DEG);
+      const hAbove = r.altitudeM - (home.alt ?? 0); // altura do avião ACIMA do observador
+      if (hAbove <= 0) continue;
+      const d = hAbove / 1000 / Math.tan(b.el * DEG);
       if (d > 300) continue;
       for (let s = -SPAN_S; s <= SPAN_S; s += STEP_S) {
         const pt = destination({ lat: r.latitude, lon: r.longitude }, r.track, (r.speed * s) / 1000);

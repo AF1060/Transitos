@@ -29,7 +29,9 @@ export default function SettingsPage() {
   const { settings: s, update, loaded, locate, gpsStatus } = useApp();
   const [lat, setLat] = useState(String(s.latitude));
   const [lon, setLon] = useState(String(s.longitude));
+  const [alt, setAlt] = useState(String(s.observerAltitudeM ?? 0));
   useEffect(() => { setLat(String(s.latitude)); setLon(String(s.longitude)); }, [s.latitude, s.longitude]);
+  useEffect(() => { setAlt(String(s.observerAltitudeM ?? 0)); }, [s.observerAltitudeM]);
   const fov = fieldOfView(s.focalLengthMm, s.sensor);
   const set = (p: Partial<Settings>) => update(p);
   if (!loaded) return <div className="grid gap-4 md:grid-cols-2">{[0,1,2].map((i) => <Skeleton key={i} className="h-56" />)}</div>;
@@ -37,6 +39,24 @@ export default function SettingsPage() {
     const la = Number(lat.replace(',','.')), lo = Number(lon.replace(',','.'));
     if (!Number.isFinite(la)||Math.abs(la)>90||!Number.isFinite(lo)||Math.abs(lo)>180) { toast.error('Coordenadas inválidas'); return; }
     set({ useGps: false, latitude: la, longitude: lo }); toast.success('Localização atualizada');
+  };
+  // Altitude acima do nível do mar. Aceita vírgula decimal; limites realistas para este uso.
+  const commitAlt = (txt: string) => {
+    setAlt(txt);
+    const n = Number(txt.replace(',', '.'));
+    if (txt.trim() !== '' && Number.isFinite(n) && n >= -400 && n <= 9000) set({ observerAltitudeM: Math.round(n * 10) / 10 });
+  };
+  const altFromGps = () => {
+    if (!navigator.geolocation) { toast.error('Este dispositivo não tem GPS'); return; }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const a = pos.coords.altitude;
+        if (a === null || !Number.isFinite(a)) { toast.warning('O GPS não devolveu altitude — introduza-a manualmente'); return; }
+        set({ observerAltitudeM: Math.round(a) }); toast.success(`Altitude do GPS: ${Math.round(a)} m (precisão típica ±20–50 m)`);
+      },
+      () => toast.error('Não foi possível obter a altitude do GPS'),
+      { enableHighAccuracy: true, timeout: 15000 },
+    );
   };
   const testAlarm = async () => {
     const perm = await requestAlarmPermissions();
@@ -64,6 +84,18 @@ export default function SettingsPage() {
               <Button onClick={saveCoords}><Crosshair className="h-4 w-4" /></Button>
             </div>
           )}
+          <div className="space-y-1">
+            <Label htmlFor="alt">Altitude do ponto de observação (m, acima do nível do mar)</Label>
+            <div className="flex gap-2">
+              <Input id="alt" inputMode="decimal" value={alt} onChange={(e) => commitAlt(e.target.value)} />
+              <Button type="button" variant="outline" onClick={altFromGps}><LocateFixed className="mr-1 h-4 w-4" />GPS</Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Soma a altitude do terreno com a altura do andar/miradouro. A altura muda o local onde o trânsito se vê:
+              {' '}a 1000 m e com o Sol a 30°, o ponto no solo desloca-se ≈ {fmtNum(1000 / Math.tan(30 * Math.PI / 180) / 1000, 1)} km face ao nível do mar.
+              Os locais alternativos sugeridos assumem a mesma altitude.
+            </p>
+          </div>
           <Range label="Distância máxima de deslocação" value={s.maxTravelKm} unit="km" min={0} max={100} step={1} onChange={(n) => set({ maxTravelKm: n })} />
           <Range label="Altura mínima do Sol/Lua" value={s.minElevationDegrees} unit="°" min={0} max={45} step={1} onChange={(n) => set({ minElevationDegrees: n })} />
           <div className="flex items-center justify-between">
